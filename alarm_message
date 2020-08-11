@@ -7,7 +7,6 @@ CropID="wwce35936f36073567"
 Secret="EG47AR-fKkvto9yxljCydc5doGqVJzLHNvNMFMzwoA8"
 GURL="https://qyapi.weixin.qq.com/cgi-bin/gettoken?corpid=$CropID&corpsecret=$Secret"
 token_file=~/.wechar_message
-
 function GetToken
 {
 	if [ ! -f "$token_file" ]
@@ -58,17 +57,18 @@ function SendMsg(){
         curl --data-ascii "$(packet "$1")" $PURL -s
 	echo ok
 }
+pre=""
 set -e
-while getopts i:u:p:m:x:w:a argss
+while getopts i:u:p:m:x:w:a: argss
 do
         case "${argss}" in
                 i)   REMOTE_IP=${OPTARG}  ;;
                 u)   USERNAME=${OPTARG}  ;;
                 p)   SCP_PASSWORD=${OPTARG}  ;;
-                m)   message=true; mmsg=${OPTARG};;
-		x)   xmessage=true; xmsg=${OPTARG};;
-		w)   wechat=true; wmsg=${OPTARG};;
-		a)   pre=true;;
+                m)   message="true"; mmsg=${OPTARG};;
+		x)   xmessage="true"; xmsg=${OPTARG};;
+		w)   wechat="true"; wmsg=${OPTARG};;
+		a)   pre=${OPTARG};;
         esac
 done
 
@@ -76,21 +76,19 @@ export ALARM_REMOTE_IP=$REMOTE_IP
 export ALARM_USERNAME=$USERNAME
 export ALARM_PASSWORD=$SCP_PASSWORD
 
-if [ $? -eq 0 ]
+if [ $# -eq 1 ]
+then
+	message=true
+fi
+
+if [ "x${pre}" = "x" ]
+then
+	pre_message=""
+elif [ "x$pre" = "x0" ]
 then 
 	pre_message="Succeed: "
 else
 	pre_message="failed: "
-fi
-
-if [ "x${pre}" != x"true" ]
-then
-	pre_message=""
-fi
-
-if [ $# -eq 1 ]
-then
-	message=true
 fi
 
 msg=${pre_message}
