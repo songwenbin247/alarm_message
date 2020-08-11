@@ -1,0 +1,128 @@
+#!/bin/bash
+REMOTE_IP="titan-song.ap.freescale.net"
+USERNAME="songwb"
+SCP_PASSWORD="swb123"
+
+CropID="wwce35936f36073567"
+Secret="EG47AR-fKkvto9yxljCydc5doGqVJzLHNvNMFMzwoA8"
+GURL="https://qyapi.weixin.qq.com/cgi-bin/gettoken?corpid=$CropID&corpsecret=$Secret"
+token_file=~/.wechar_message
+
+function GetToken
+{
+	if [ ! -f "$token_file" ]
+	then
+		echo "time: 0" > "$token_file"
+	fi
+	time=$(cat $token_file | grep "time" | awk -F ':' '{print $2}')
+	now=$(date +%s)
+	diff=$((${now}-${time}))
+	if [ ${diff} -gt 7100 ]
+	then
+		Gtoken=$(/usr/bin/curl -s -G $GURL | awk -F \" '{print $10}')
+		if [ $? -ne 0 ]
+		then
+			echo "Get token failed"
+			exit 1
+		fi
+		echo "time: $(date +%s)" > "$token_file"
+		echo "token: ${Gtoken}" >> $token_file
+	else
+		Gtoken=$(cat $token_file | grep "token" | awk -F ':' '{print $2}')
+	fi
+	echo $Gtoken
+}
+
+function packet()
+{
+    local int AppID=1000004           # 企业号中的应用id
+    #local UserID="${cat $path/weixin_user.txt}"      # 部门成员id，企业微信中定义的微信接收者
+    local UserID="@all"               # 企业微信APP中的全部报警用户
+    #local PartyID=$2                 # 部门id，定义了范围，组内成员都可接收到消息
+    local Msg=$1           # 过滤出企业微信中传递的第三个参数
+    printf '{\n'
+    printf '\t"touser": "'"$UserID"\","\n"
+    printf '\t"msgtype": "text",\n'
+    printf '\t"agentid": "'$AppID'",\n'
+    printf '\t"text": {\n'
+    printf '\t\t"content": "'"$Msg"\""\n"
+    printf '\t},\n'
+    printf '\t"safe":"0"\n'
+    printf '}\n'
+}
+
+#定义发送信息函数
+function SendMsg(){
+	token=$(GetToken)
+	PURL="https://qyapi.weixin.qq.com/cgi-bin/message/send?access_token=${token}"
+        curl --data-ascii "$(packet "$1")" $PURL -s
+	echo ok
+}
+set -e
+while getopts i:u:p:m:x:w:a argss
+do
+        case "${argss}" in
+                i)   REMOTE_IP=${OPTARG}  ;;
+                u)   USERNAME=${OPTARG}  ;;
+                p)   SCP_PASSWORD=${OPTARG}  ;;
+                m)   message=true; mmsg=${OPTARG};;
+		x)   xmessage=true; xmsg=${OPTARG};;
+		w)   wechat=true; wmsg=${OPTARG};;
+		a)   pre=true;;
+        esac
+done
+
+export ALARM_REMOTE_IP=$REMOTE_IP
+export ALARM_USERNAME=$USERNAME
+export ALARM_PASSWORD=$SCP_PASSWORD
+
+if [ $? -eq 0 ]
+then 
+	pre_message="Succeed: "
+else
+	pre_message="failed: "
+fi
+
+if [ "x${pre}" != x"true" ]
+then
+	pre_message=""
+fi
+
+if [ $# -eq 1 ]
+then
+	message=true
+fi
+
+msg=${pre_message}
+
+if [ "x${wechat}" = "xtrue" ]
+then
+	msg+=$wmsg
+	SendMsg "$msg"
+fi
+
+if [ "x${message}" = "xtrue" -o "x${xmessage}" = "xtrue" ]
+then
+	tmpfile=$(mktemp /tmp/alarm-script.XXXXXX)
+	if [ "x${xmessage}" = "xtrue" ]
+	then
+		msg+=$xmsg
+		echo "ssh  $ALARM_USERNAME@$ALARM_REMOTE_IP 'DISPLAY=:0 xmessage \"${msg}\"'" > $tmpfile
+	else
+		msg+=$mmsg
+		echo "ssh  $ALARM_USERNAME@$ALARM_REMOTE_IP 'DISPLAY=:0 notify-send \"${msg}\"'" > $tmpfile
+	fi
+	
+	chmod u+x $tmpfile
+	temp="notify-send \"$message\""
+	export temp
+	expect -c "
+	    set timeout 1
+	    spawn $tmpfile
+	    expect yes/no { send yes\r; exp_continue }
+	    expect password: { send "$ALARM_PASSWORD"\r }
+	    sleep 1
+	    exit
+	"> /dev/null 2>&1
+	rm $tmpfile
+fi
